@@ -17,6 +17,16 @@ app = Flask(__name__)
 CORS(app)
 
 
+@app.errorhandler(404)
+def debug_404(e):
+    return jsonify({
+        'error': 'not_found',
+        'path_seen_by_flask': request.path,
+        'full_path': request.full_path,
+        'method': request.method
+    }), 404
+
+
 # Explicit routes for each known frontend asset (no catch-all) - this never risks
 # exposing .env, source code, or logs from this directory over HTTP.
 @app.route('/')
