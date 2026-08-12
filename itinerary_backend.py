@@ -9,6 +9,7 @@ import requests
 import math
 from itertools import permutations
 from datetime import datetime, timedelta
+from urllib.parse import parse_qs, urlencode
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -17,14 +18,30 @@ app = Flask(__name__)
 CORS(app)
 
 
-@app.errorhandler(404)
-def debug_404(e):
-    return jsonify({
-        'error': 'not_found',
-        'path_seen_by_flask': request.path,
-        'full_path': request.full_path,
-        'method': request.method
-    }), 404
+class VercelPathFix:
+    """
+    vercel.json rewrites every /api/* request to /api/index, and since the
+    destination doesn't reference the captured :path*, Vercel appends it as a
+    `path` query param instead of keeping it in the URL (e.g. a request for
+    /api/health arrives here as PATH_INFO=/api/index?path=health). Rebuild the
+    real path from that query param before Flask's router sees it, so our
+    normal @app.route('/api/health') etc. definitions keep working unchanged.
+    Locally (no rewrite involved), this is a no-op.
+    """
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        if environ.get('PATH_INFO') == '/api/index':
+            params = parse_qs(environ.get('QUERY_STRING', ''))
+            sub_path = params.pop('path', [None])[0]
+            if sub_path:
+                environ['PATH_INFO'] = '/api/' + sub_path
+                environ['QUERY_STRING'] = urlencode(params, doseq=True)
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = VercelPathFix(app.wsgi_app)
 
 
 # Explicit routes for each known frontend asset (no catch-all) - this never risks
