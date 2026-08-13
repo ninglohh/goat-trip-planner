@@ -7,6 +7,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import requests
 import math
+import json
+import uuid
 from itertools import permutations
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlencode
@@ -478,6 +480,97 @@ def travel_time():
     })
 
 
+# Shared itineraries: state is stored in a Redis-compatible KV store (Vercel
+# KV / Upstash) so a link can be opened by anyone and edits save back to the
+# same id. Different storage integrations inject different env var names, so
+# check both conventions rather than assuming one.
+KV_URL = os.getenv('KV_REST_API_URL') or os.getenv('UPSTASH_REDIS_REST_URL')
+KV_TOKEN = os.getenv('KV_REST_API_TOKEN') or os.getenv('UPSTASH_REDIS_REST_TOKEN')
+
+
+def kv_configured():
+    return bool(KV_URL and KV_TOKEN)
+
+
+def kv_set(key, value_dict):
+    response = requests.post(
+        f"{KV_URL}/set/{key}",
+        headers={'Authorization': f'Bearer {KV_TOKEN}'},
+        data=json.dumps(value_dict),
+        timeout=10
+    )
+    return response.status_code == 200
+
+
+def kv_get(key):
+    response = requests.get(
+        f"{KV_URL}/get/{key}",
+        headers={'Authorization': f'Bearer {KV_TOKEN}'},
+        timeout=10
+    )
+    if response.status_code != 200:
+        return None
+    result = response.json().get('result')
+    if result is None:
+        return None
+    return json.loads(result)
+
+
+@app.route('/api/trip', methods=['POST'])
+def create_trip():
+    """Save a new shared trip, returning the id its link is built from."""
+    if not kv_configured():
+        return jsonify({'error': 'Sharing is not set up yet - connect a KV/Redis database in the Vercel dashboard.'}), 503
+
+    trip_id = uuid.uuid4().hex[:10]
+    state = request.json or {}
+
+    try:
+        if not kv_set(f'trip:{trip_id}', state):
+            return jsonify({'error': 'Could not save trip'}), 502
+    except Exception as e:
+        print(f"Trip save error: {e}")
+        return jsonify({'error': 'Could not save trip'}), 502
+
+    return jsonify({'id': trip_id})
+
+
+@app.route('/api/trip/<trip_id>', methods=['GET'])
+def get_trip(trip_id):
+    """Load a shared trip's full state by id."""
+    if not kv_configured():
+        return jsonify({'error': 'Sharing is not set up yet - connect a KV/Redis database in the Vercel dashboard.'}), 503
+
+    try:
+        state = kv_get(f'trip:{trip_id}')
+    except Exception as e:
+        print(f"Trip load error: {e}")
+        return jsonify({'error': 'Could not load trip'}), 502
+
+    if state is None:
+        return jsonify({'error': 'Trip not found'}), 404
+
+    return jsonify(state)
+
+
+@app.route('/api/trip/<trip_id>', methods=['PUT'])
+def update_trip(trip_id):
+    """Overwrite a shared trip's state - used to autosave edits back to the link."""
+    if not kv_configured():
+        return jsonify({'error': 'Sharing is not set up yet - connect a KV/Redis database in the Vercel dashboard.'}), 503
+
+    state = request.json or {}
+
+    try:
+        if not kv_set(f'trip:{trip_id}', state):
+            return jsonify({'error': 'Could not save trip'}), 502
+    except Exception as e:
+        print(f"Trip update error: {e}")
+        return jsonify({'error': 'Could not save trip'}), 502
+
+    return jsonify({'ok': True})
+
+
 @app.route('/api/health', methods=['GET'])
 def health():
     """Health check endpoint"""
@@ -485,7 +578,8 @@ def health():
     return jsonify({
         'status': 'ok',
         'message': 'Trip Itinerary Planner API is running',
-        'apiKeyConfigured': key_configured
+        'apiKeyConfigured': key_configured,
+        'sharingConfigured': kv_configured()
     })
 
 

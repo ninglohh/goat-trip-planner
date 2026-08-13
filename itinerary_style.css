@@ -146,7 +146,7 @@ header p {
 .form-section h2,
 .results-section h2 {
     font-size: 1.05rem;
-    text-transform: uppercase;
+    text-transform: lowercase;
     letter-spacing: 0.18em;
     color: var(--accent);
     margin-bottom: 18px;
@@ -625,6 +625,67 @@ button:hover {
     font-weight: 700;
 }
 
+/* Plan shape (skeleton) sequence */
+.skeleton-sequence {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.skeleton-slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent);
+    color: white;
+    border-radius: 999px;
+    padding: 6px 8px 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.skeleton-remove {
+    background: rgba(255, 255, 255, 0.25);
+    border: none;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+}
+
+.skeleton-remove:hover {
+    background: rgba(255, 255, 255, 0.45);
+}
+
+.skeleton-arrow {
+    color: var(--text-soft);
+    font-weight: 700;
+}
+
+/* Per-day start time inputs (shown once trip is multi-day) */
+.day-start-times {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.day-start-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.day-start-row label {
+    flex-shrink: 0;
+    min-width: 90px;
+}
+
 /* Draggable destination chips (itinerary tab) */
 .dest-chips {
     display: flex;
@@ -665,7 +726,7 @@ button:hover {
 .itinerary-table thead th {
     text-align: left;
     font-size: 0.78rem;
-    text-transform: uppercase;
+    text-transform: lowercase;
     letter-spacing: 0.08em;
     color: var(--text-soft);
     padding: 0 12px 10px;
@@ -737,6 +798,18 @@ button:hover {
     font-style: normal;
 }
 
+.itinerary-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.itinerary-header-row h2 {
+    margin-bottom: 0;
+}
+
 /* Day-by-day pagination */
 .day-pager {
     display: flex;
@@ -750,6 +823,16 @@ button:hover {
 
 .day-pager.hidden {
     display: none;
+}
+
+.day-pager-time-label {
+    font-weight: 400;
+    font-size: 0.85rem;
+}
+
+#dayPagerStartTime {
+    padding: 6px 10px;
+    font-size: 0.9rem;
 }
 
 .day-arrow {

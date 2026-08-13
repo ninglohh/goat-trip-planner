@@ -1,14 +1,18 @@
 let places = [];
 let friends = [];
 let itinerary = [];
+let skeleton = [];
+let dayStartTimes = {};
 let lastPlaceCoords = null;
 let startingPointCoords = null;
 let backendAvailable = false;
 let currentDayView = 1;
+let currentTripId = null;
+let tripSaveTimeout = null;
 const suggestionSearchTimeouts = {};
 
 const TRAVEL_MODES = ['driving', 'transit', 'walking', 'bicycling'];
-const TRAVEL_MODE_LABELS = { driving: 'Driving', transit: 'Transit', walking: 'Walking', bicycling: 'Cycling' };
+const TRAVEL_MODE_LABELS = { driving: 'driving', transit: 'transit', walking: 'walking', bicycling: 'cycling' };
 
 const suggestionTargets = {
     place: {
@@ -34,7 +38,7 @@ async function checkBackendStatus() {
     try {
         const response = await fetch('/api/health');
         if (!response.ok) {
-            updateApiStatus(false, 'Backend unreachable. Start itinerary_backend.py on port 5001.');
+            updateApiStatus(false, 'backend unreachable. start itinerary_backend.py on port 5001.');
             return;
         }
 
@@ -42,13 +46,13 @@ async function checkBackendStatus() {
         backendAvailable = true;
 
         if (data.apiKeyConfigured) {
-            updateApiStatus(true, 'Backend connected ✅ Google Maps API key detected.');
+            updateApiStatus(true, 'backend connected ✅ google maps api key detected.');
         } else {
-            updateApiStatus(true, 'Backend connected, but no Google Maps API key is set (GOOGLE_MAPS_API_KEY). Place search/geocoding will fail.', true);
+            updateApiStatus(true, 'backend connected, but no google maps api key is set (GOOGLE_MAPS_API_KEY). place search/geocoding will fail.', true);
         }
     } catch (error) {
         backendAvailable = false;
-        updateApiStatus(false, 'Backend unreachable. Start itinerary_backend.py on port 5001.');
+        updateApiStatus(false, 'backend unreachable. start itinerary_backend.py on port 5001.');
     }
 }
 
@@ -57,12 +61,12 @@ function updateApiStatus(loaded, message, warn = false) {
     if (!status) return;
 
     if (loaded) {
-        status.textContent = message || 'Backend connected ✅';
+        status.textContent = message || 'backend connected ✅';
         status.classList.toggle('status-warn', warn);
         status.classList.toggle('status-ok', !warn);
         status.classList.remove('status-error');
     } else {
-        status.textContent = message || 'Backend unavailable. Check the server and network.';
+        status.textContent = message || 'backend unavailable. check the server and network.';
         status.classList.add('status-error');
         status.classList.remove('status-ok', 'status-warn');
     }
@@ -85,7 +89,7 @@ function renderSuggestions(target, results) {
     const config = suggestionTargets[target];
 
     if (!results || results.length === 0) {
-        box.innerHTML = '<div class="suggestion-item"><span class="suggestion-label">No results found</span></div>';
+        box.innerHTML = '<div class="suggestion-item"><span class="suggestion-label">no results found</span></div>';
         box.classList.remove('hidden');
         config.latest = [];
         return;
@@ -95,7 +99,7 @@ function renderSuggestions(target, results) {
     box.innerHTML = results.map((place, index) => `
         <button type="button" class="suggestion-item" onclick="selectSuggestionFor('${target}', ${index})">
             <span class="suggestion-label">${place.name}</span>
-            <span class="suggestion-subtitle">${place.address || 'Address unavailable'}</span>
+            <span class="suggestion-subtitle">${place.address || 'address unavailable'}</span>
         </button>
     `).join('');
     box.classList.remove('hidden');
@@ -192,18 +196,18 @@ async function addPlace() {
     let address = document.getElementById('placeAddress').value.trim();
     const durationHours = parseInt(document.getElementById('visitDurationHours').value, 10) || 0;
     const durationMinutes = parseInt(document.getElementById('visitDurationMinutes').value, 10) || 0;
-    const duration = (durationHours * 60 + durationMinutes) || 60;
+    const duration = durationHours * 60 + durationMinutes;
     const notes = document.getElementById('placeNotes').value.trim();
     const tags = collectSelectedTags();
 
     if (!name) {
-        showAlert('Type a destination name first.', 'error');
+        showAlert('type a place name first.', 'error');
         return;
     }
 
     if (!address) {
         if (!backendAvailable) {
-            showAlert('Maps not loaded yet. Refresh the page and try again.', 'error');
+            showAlert('maps not loaded yet. refresh the page and try again.', 'error');
             return;
         }
 
@@ -219,7 +223,7 @@ async function addPlace() {
                 };
             }
         } catch (error) {
-            showAlert('Could not resolve that place. Try a more specific name or pick a suggestion.', 'error');
+            showAlert('could not resolve that place. try a more specific name or pick a suggestion.', 'error');
             return;
         }
     }
@@ -236,8 +240,8 @@ async function addPlace() {
 
     document.getElementById('placeName').value = '';
     document.getElementById('placeAddress').value = '';
-    document.getElementById('visitDurationHours').value = '1';
-    document.getElementById('visitDurationMinutes').value = '0';
+    document.getElementById('visitDurationHours').value = '';
+    document.getElementById('visitDurationMinutes').value = '';
     document.getElementById('placeNotes').value = '';
     document.getElementById('placeCustomTag').value = '';
     document.querySelectorAll('#placeTagOptions .tag-toggle.active').forEach(btn => btn.classList.remove('active'));
@@ -246,7 +250,7 @@ async function addPlace() {
     updatePlacesList();
     updateFriendMeetOptions();
     renderItineraryDestChips();
-    showAlert(`Added ${name}`, 'success');
+    showAlert(`added ${name}`, 'success');
 }
 
 function removePlace(id) {
@@ -274,8 +278,9 @@ function updatePlacesList() {
     const list = document.getElementById('placesList');
 
     if (places.length === 0) {
-        list.innerHTML = '<p class="empty-state">No destinations added yet</p>';
+        list.innerHTML = '<p class="empty-state">no places added yet</p>';
         renderItineraryDestChips();
+        scheduleTripSave();
         return;
     }
 
@@ -284,15 +289,16 @@ function updatePlacesList() {
             <div class="item-content">
                 <strong>${place.name}</strong>
                 <small>${place.address}</small>
-                <small>Visit ${formatDuration(place.duration)}</small>
+                <small>${place.duration > 0 ? `visit ${formatDuration(place.duration)}` : 'pass-through (no duration set)'}</small>
                 ${place.notes ? `<small class="place-notes">📝 ${place.notes}</small>` : ''}
                 ${renderTagBadges(place.tags)}
             </div>
-            <button class="btn-remove" onclick="removePlace(${place.id})">Remove</button>
+            <button class="btn-remove" onclick="removePlace(${place.id})">remove</button>
         </div>
     `).join('');
 
     renderItineraryDestChips();
+    scheduleTripSave();
 }
 
 function updateFriendMeetOptions() {
@@ -300,14 +306,14 @@ function updateFriendMeetOptions() {
     if (!select) return;
 
     if (places.length === 0) {
-        select.innerHTML = '<option value="">Add a destination first</option>';
+        select.innerHTML = '<option value="">add a place first</option>';
         select.disabled = true;
         return;
     }
 
     select.disabled = false;
     select.innerHTML = `
-        <option value="">Choose destination</option>
+        <option value="">choose place</option>
         ${places.map(place => `<option value="${place.name}">${place.name}</option>`).join('')}
     `;
 }
@@ -318,7 +324,7 @@ function addFriend() {
     const meetLocation = document.getElementById('friendMeetLocation').value;
 
     if (!name || !arrivalTime || !meetLocation) {
-        showAlert('Please fill in the friend name, arrival time, and meeting destination.', 'error');
+        showAlert('please fill in the friend name, arrival time, and meeting place.', 'error');
         return;
     }
 
@@ -334,7 +340,7 @@ function addFriend() {
     document.getElementById('friendMeetLocation').value = '';
 
     updateFriendsList();
-    showAlert(`Saved friend ${name}`, 'success');
+    showAlert(`saved friend ${name}`, 'success');
 }
 
 function removeFriend(id) {
@@ -346,7 +352,8 @@ function updateFriendsList() {
     const list = document.getElementById('friendsList');
 
     if (friends.length === 0) {
-        list.innerHTML = '<p class="empty-state">No friends added yet</p>';
+        list.innerHTML = '<p class="empty-state">no friends added yet</p>';
+        scheduleTripSave();
         return;
     }
 
@@ -359,6 +366,7 @@ function updateFriendsList() {
             <div class="friend-meta">${friend.meetLocation}</div>
         </div>
     `).join('');
+    scheduleTripSave();
 }
 
 async function resolveStartingPointCoords(startingPoint) {
@@ -380,34 +388,200 @@ async function resolveStartingPointCoords(startingPoint) {
     return null;
 }
 
+// PLAN SHAPE (skeleton): an ordered sequence of category slots (e.g. Activity,
+// Food, Activity) that places get assigned into by nearest-match, so the trip
+// follows a deliberate shape instead of just add-order.
+function addSkeletonSlot(tag) {
+    skeleton.push(tag);
+    renderSkeleton();
+}
+
+function removeSkeletonSlot(index) {
+    skeleton.splice(index, 1);
+    renderSkeleton();
+}
+
+function clearSkeleton() {
+    skeleton = [];
+    renderSkeleton();
+}
+
+function skeletonSlotLabel(tag) {
+    return tag === 'Any' ? 'any' : tag.toLowerCase();
+}
+
+function renderSkeleton() {
+    const box = document.getElementById('skeletonSequence');
+    if (!box) return;
+
+    if (skeleton.length === 0) {
+        box.innerHTML = '<p class="empty-state">no shape set - tap a category above to start building one</p>';
+        scheduleTripSave();
+        return;
+    }
+
+    box.innerHTML = skeleton.map((tag, index) => `
+        <span class="skeleton-slot">${index + 1}. ${skeletonSlotLabel(tag)}<button type="button" class="skeleton-remove" onclick="removeSkeletonSlot(${index})">✕</button></span>${index < skeleton.length - 1 ? '<span class="skeleton-arrow">→</span>' : ''}
+    `).join('');
+    scheduleTripSave();
+}
+
+function haversineKm(a, b) {
+    if (!a || !b || a.lat == null || b.lat == null) return Infinity;
+    const R = 6371;
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLng = (b.lng - a.lng) * Math.PI / 180;
+    const lat1 = a.lat * Math.PI / 180;
+    const lat2 = b.lat * Math.PI / 180;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Walk the skeleton once per day, each slot claiming whichever remaining
+// eligible (by tag) place is geographically nearest to wherever we are so
+// far - a greedy heuristic that keeps commute short without needing a full
+// TSP solve. Leftover places that don't fit any slot are reported, not lost.
+function assignPlacesToSkeleton(skeletonTags, allPlaces, startCoords, tripDays) {
+    const remaining = [...allPlaces];
+    const dayGroups = [];
+    let currentCoords = startCoords || null;
+
+    for (let day = 0; day < tripDays; day++) {
+        const dayPlaces = [];
+        for (const slotTag of skeletonTags) {
+            const candidates = remaining.filter(p => slotTag === 'Any' || (p.tags || []).includes(slotTag));
+            if (candidates.length === 0) continue;
+
+            if (currentCoords) {
+                candidates.sort((a, b) => haversineKm(currentCoords, a.coords) - haversineKm(currentCoords, b.coords));
+            }
+
+            const chosen = candidates[0];
+            dayPlaces.push(chosen);
+            remaining.splice(remaining.indexOf(chosen), 1);
+            if (chosen.coords) currentCoords = chosen.coords;
+        }
+        dayGroups.push(dayPlaces);
+    }
+
+    if (remaining.length > 0) {
+        showAlert(`${remaining.length} place(s) didn't match your plan shape and weren't scheduled: ${remaining.map(p => p.name).join(', ')}`, 'info');
+    }
+
+    return dayGroups;
+}
+
+function splitPlacesEvenlyByDay(allPlaces, tripDays) {
+    const perDay = Math.floor(allPlaces.length / tripDays);
+    const remainder = allPlaces.length % tripDays;
+    const groups = [];
+    let idx = 0;
+    for (let d = 0; d < tripDays; d++) {
+        const count = perDay + (d < remainder ? 1 : 0);
+        groups.push(allPlaces.slice(idx, idx + count));
+        idx += count;
+    }
+    return groups;
+}
+
+function toMinutes(timeStr) {
+    const [h, m] = (timeStr || '00:00').split(':').map(Number);
+    return h * 60 + m;
+}
+
+function getDayStartTime(day) {
+    return dayStartTimes[day] || document.getElementById('startTime').value || '09:00';
+}
+
+function renderDayStartTimeInputs() {
+    const days = parseInt(document.getElementById('tripDays').value, 10) || 1;
+    const container = document.getElementById('dayStartTimesContainer');
+    if (!container) return;
+
+    if (days <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const defaultTime = document.getElementById('startTime').value || '09:00';
+    for (let d = 2; d <= days; d++) {
+        if (!dayStartTimes[d]) dayStartTimes[d] = defaultTime;
+    }
+
+    container.innerHTML = Array.from({ length: days - 1 }, (_, i) => i + 2).map(d => `
+        <div class="day-start-row">
+            <label>day ${d} start</label>
+            <input type="time" value="${dayStartTimes[d]}" onchange="dayStartTimes[${d}] = this.value">
+        </div>
+    `).join('');
+}
+
 async function generateItinerary() {
     if (places.length === 0) {
-        showAlert('Add at least one destination first.', 'error');
+        showAlert('add at least one place first.', 'error');
         return;
     }
 
     const startingPoint = document.getElementById('startingPoint').value.trim();
-    const startTime = document.getElementById('startTime').value;
     const travelMode = document.getElementById('travelMode').value;
     const tripDays = parseInt(document.getElementById('tripDays').value, 10) || 1;
 
-    if (!startingPoint || !startTime) {
-        showAlert('Set a starting point and start time.', 'error');
+    if (!startingPoint) {
+        showAlert('set a starting point.', 'error');
         return;
+    }
+
+    for (let d = 1; d <= tripDays; d++) {
+        dayStartTimes[d] = getDayStartTime(d);
     }
 
     const startCoords = await resolveStartingPointCoords(startingPoint);
 
+    const dayGroups = skeleton.length > 0
+        ? assignPlacesToSkeleton(skeleton, places, startCoords, tripDays)
+        : splitPlacesEvenlyByDay(places, tripDays);
+
     try {
         currentDayView = 1;
-        itinerary = await optimizeRoute(startingPoint, startCoords, places, friends, startTime, travelMode, tripDays);
-        backfillTravelDays(itinerary);
+        itinerary = await buildMultiDayItinerary(startingPoint, startCoords, dayGroups, travelMode);
         displayItinerary(itinerary);
         switchTab('itinerary');
-        showAlert('Itinerary ready! Edit as needed.', 'success');
+        showAlert('itinerary ready! edit as needed.', 'success');
     } catch (error) {
-        showAlert(`Could not generate itinerary: ${error.message}`, 'error');
+        showAlert(`could not generate itinerary: ${error.message}`, 'error');
     }
+}
+
+// Composes the itinerary day-by-day (always calling the backend with days=1
+// per chunk) so each day can have its own start time and, when a plan shape
+// is set, its own skeleton-assigned place order.
+async function buildMultiDayItinerary(startingPoint, startCoords, dayGroups, travelMode) {
+    const fullItinerary = [];
+    let currentLocation = startingPoint;
+    let currentCoords = startCoords;
+
+    for (let i = 0; i < dayGroups.length; i++) {
+        const dayPlaces = dayGroups[i];
+        const dayNum = i + 1;
+        if (dayPlaces.length === 0) continue;
+
+        if (fullItinerary.length > 0) {
+            fullItinerary.push({ type: 'day_break', day: dayNum, date: '---' });
+        }
+
+        const dayStart = getDayStartTime(dayNum);
+        const dayItinerary = await optimizeRoute(currentLocation, currentCoords, dayPlaces, friends, dayStart, travelMode, 1);
+        dayItinerary.forEach(item => { item.day = dayNum; });
+        fullItinerary.push(...dayItinerary);
+
+        const lastVisit = [...dayItinerary].reverse().find(item => item.type === 'visit');
+        if (lastVisit) {
+            currentLocation = lastVisit.place;
+            currentCoords = lastVisit.coords;
+        }
+    }
+
+    return fullItinerary;
 }
 
 async function optimizeRoute(start, startCoords, places, friends, startTime, travelMode, tripDays = 1) {
@@ -463,6 +637,7 @@ function createSimpleItinerary(start, startCoords, places, friends, startTime, t
         for (let i = 0; i < places.length; i++) {
             const place = places[i];
             const placeFriends = friends.filter(f => f.meetLocation === place.name);
+            const duration = place.duration || 0;
 
             // Travel segment
             itinerary.push({
@@ -483,7 +658,7 @@ function createSimpleItinerary(start, startCoords, places, friends, startTime, t
 
             // Visit segment
             const arrival = formatTime(currentTime);
-            const depart = formatTime(currentTime + place.duration);
+            const depart = formatTime(currentTime + duration);
 
             itinerary.push({
                 type: 'visit',
@@ -492,7 +667,7 @@ function createSimpleItinerary(start, startCoords, places, friends, startTime, t
                 coords: place.coords || null,
                 notes: place.notes || '',
                 tags: place.tags || [],
-                duration: place.duration,
+                duration: duration,
                 startTime: arrival,
                 endTime: depart,
                 friends: placeFriends.map(f => f.name).join(', ') || 'Solo',
@@ -501,12 +676,12 @@ function createSimpleItinerary(start, startCoords, places, friends, startTime, t
                 canDelete: true
             });
 
-            currentTime += place.duration;
+            currentTime += duration;
             lastCoords = place.coords || null;
             lastLocation = place.name;
         }
     }
-    
+
     return itinerary;
 }
 
@@ -525,14 +700,22 @@ function changeDayView(delta) {
     displayItinerary(itinerary);
 }
 
+function updateDayStartTime(value) {
+    dayStartTimes[currentDayView] = value;
+    normalizeItinerary();
+    displayItinerary(itinerary);
+}
+
 function displayItinerary(itineraryItems) {
     const result = document.getElementById('itineraryResult');
     const pager = document.getElementById('dayPager');
     const pagerLabel = document.getElementById('dayPagerLabel');
+    const pagerStartTime = document.getElementById('dayPagerStartTime');
 
     if (!itineraryItems || itineraryItems.length === 0) {
-        result.innerHTML = '<p class="empty-state">Your cute goat route will show up here. Set your trip settings above and generate, or drag a destination in.</p>';
+        result.innerHTML = '<p class="empty-state">your cute goat route will show up here. set your trip settings above and generate, or drag a place in.</p>';
         if (pager) pager.classList.add('hidden');
+        scheduleTripSave();
         return;
     }
 
@@ -543,7 +726,8 @@ function displayItinerary(itineraryItems) {
     if (pager) {
         if (totalDays > 1) {
             pager.classList.remove('hidden');
-            pagerLabel.textContent = `Day ${currentDayView} of ${totalDays}`;
+            pagerLabel.textContent = `day ${currentDayView} of ${totalDays}`;
+            if (pagerStartTime) pagerStartTime.value = getDayStartTime(currentDayView);
         } else {
             pager.classList.add('hidden');
         }
@@ -573,12 +757,15 @@ function displayItinerary(itineraryItems) {
         }
 
         if (item.type === 'visit') {
+            const timeCell = item.duration > 0
+                ? `${item.startTime} - ${item.endTime}<br><small>stay ${formatDuration(item.duration)}</small>`
+                : `${item.startTime}<br><small>pass-through</small>`;
             return `
                 <tr class="itinerary-row visit-row" data-index="${index}">
-                    <td class="col-time">${item.startTime} - ${item.endTime}<br><small>Stay ${formatDuration(item.duration)}</small></td>
+                    <td class="col-time">${timeCell}</td>
                     <td class="col-place">📍 ${item.place}${renderTagBadges(item.tags)}</td>
                     <td class="col-address">${item.address || '—'}${item.notes ? `<br><small class="itinerary-note">📝 ${item.notes}</small>` : ''}</td>
-                    <td class="col-people">${item.friends || 'Solo'}</td>
+                    <td class="col-people">${item.friends || 'solo'}</td>
                     <td class="col-actions">
                         <button class="btn-small" onclick="editItineraryItem(${index})">✏️</button>
                         <button class="btn-small" onclick="deleteItineraryItem(${index})">✕</button>
@@ -598,16 +785,17 @@ function displayItinerary(itineraryItems) {
         <table class="itinerary-table">
             <thead>
                 <tr>
-                    <th>Time</th>
-                    <th>Place</th>
-                    <th>Address</th>
-                    <th>People</th>
+                    <th>time</th>
+                    <th>place</th>
+                    <th>address</th>
+                    <th>people</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>${rows}</tbody>
         </table>
     `;
+    scheduleTripSave();
 }
 
 async function changeLegMode(index, mode) {
@@ -640,46 +828,28 @@ async function changeLegMode(index, mode) {
         item.distance = data.distance;
         item.accurate = data.accurate;
     } catch (error) {
-        showAlert('Could not refresh travel time for that mode.', 'error');
+        showAlert('could not refresh travel time for that mode.', 'error');
     }
 
     normalizeItinerary();
     displayItinerary(itinerary);
 }
 
-// Backend visit/day_break items carry a `day`, but travel items don't - tag them
-// from the surrounding day_break markers so day-view pagination can filter on it,
-// without touching the backend's real from/to/duration/distance data.
-function backfillTravelDays(items) {
-    let day = 1;
-    items.forEach(item => {
-        if (item.type === 'day_break') {
-            day = item.day;
-            return;
-        }
-        if (item.type === 'travel') {
-            item.day = day;
-        }
-    });
-}
-
 // Recomputes from/to labels, coords, day, and start/end times for every item, in order.
 // Runs after any insert, delete, or duration edit so the itinerary stays consistent.
 function normalizeItinerary() {
-    const startingPoint = (document.getElementById('startingPoint').value || '').trim() || 'Starting point';
-    const startTime = document.getElementById('startTime').value || '09:00';
-    const [startHour, startMin] = startTime.split(':').map(Number);
-    let current = startHour * 60 + startMin;
+    const startingPoint = (document.getElementById('startingPoint').value || '').trim() || 'starting point';
+    let day = 1;
+    let current = toMinutes(getDayStartTime(1));
     let lastLocation = startingPoint;
     let lastCoords = startingPointCoords;
-    let day = 1;
 
     itinerary.forEach((item, index) => {
         if (item.type === 'day_break') {
             // Only the clock resets each day - travel continues from wherever the
             // previous day's last visit left off, matching the backend's own logic.
             day = item.day;
-            current = startHour * 60 + startMin;
+            current = toMinutes(getDayStartTime(day));
             return;
         }
 
@@ -735,25 +905,25 @@ function editItineraryItem(index) {
     const item = itinerary[index];
     if (!item || item.type !== 'visit') return;
 
-    const input = prompt(`Edit visit duration for ${item.place} (e.g. "1h 30m" or "45m"):`, formatDuration(item.duration));
+    const input = prompt(`edit visit duration for ${item.place} (e.g. "1h 30m", "45m", or "0" for pass-through):`, formatDuration(item.duration));
     if (input == null) return;
 
     const parsed = parseDurationInput(input, null);
-    if (!parsed || parsed <= 0) {
-        showAlert('Could not read that duration. Try formats like "1h 30m" or "45m".', 'error');
+    if (parsed == null || parsed < 0) {
+        showAlert('could not read that duration. try formats like "1h 30m", "45m", or "0".', 'error');
         return;
     }
 
     item.duration = parsed;
     normalizeItinerary();
     displayItinerary(itinerary);
-    showAlert(`Updated ${item.place}`, 'success');
+    showAlert(`updated ${item.place}`, 'success');
 }
 
 function deleteItineraryItem(index) {
     const item = itinerary[index];
     if (!item) return;
-    if (!confirm('Remove this item from itinerary?')) return;
+    if (!confirm('remove this item from itinerary?')) return;
 
     if (item.type === 'visit') {
         const prev = itinerary[index - 1];
@@ -768,16 +938,16 @@ function deleteItineraryItem(index) {
 
     normalizeItinerary();
     displayItinerary(itinerary);
-    showAlert('Item removed', 'success');
+    showAlert('item removed', 'success');
 }
 
-// DRAG AND DROP: drag a destination chip into the itinerary to insert a visit there
+// DRAG AND DROP: drag a place chip into the itinerary to insert a visit there
 function renderItineraryDestChips() {
     const box = document.getElementById('itineraryDestChips');
     if (!box) return;
 
     if (places.length === 0) {
-        box.innerHTML = '<p class="empty-state">Add destinations in the Destinations tab, then drag them in here.</p>';
+        box.innerHTML = '<p class="empty-state">add places in the places tab, then drag them in here.</p>';
         return;
     }
 
@@ -902,7 +1072,7 @@ async function insertDestinationAtBoundary(placeId, boundary) {
         coords: place.coords || null,
         notes: place.notes || '',
         tags: place.tags || [],
-        duration: place.duration,
+        duration: place.duration || 0,
         friends: placeFriends,
         canEdit: true,
         canDelete: true
@@ -911,7 +1081,7 @@ async function insertDestinationAtBoundary(placeId, boundary) {
     itinerary.splice(boundary, 0, travelItem, visitItem);
     normalizeItinerary();
     displayItinerary(itinerary);
-    showAlert(`Added ${place.name} to itinerary`, 'success');
+    showAlert(`added ${place.name} to itinerary`, 'success');
 
     // Refine the new leg's time/distance with a real Distance Matrix lookup, if possible.
     if (backendAvailable && travelItem.fromCoords && travelItem.toCoords) {
@@ -936,6 +1106,110 @@ async function insertDestinationAtBoundary(placeId, boundary) {
         } catch (error) {
             // Keep the placeholder estimate if this fails.
         }
+    }
+}
+
+// SHARING: save the full trip state to the backend and hand back a link that
+// loads the same state - any further edits (by you or whoever opens the
+// link) save back to that same id, so it stays in sync on reload.
+function collectTripState() {
+    return {
+        places,
+        friends,
+        itinerary,
+        skeleton,
+        dayStartTimes,
+        startingPoint: document.getElementById('startingPoint').value,
+        startingPointCoords,
+        startTime: document.getElementById('startTime').value,
+        tripDays: document.getElementById('tripDays').value,
+        travelMode: document.getElementById('travelMode').value
+    };
+}
+
+function scheduleTripSave() {
+    if (!currentTripId) return;
+    clearTimeout(tripSaveTimeout);
+    tripSaveTimeout = setTimeout(saveTripState, 800);
+}
+
+async function saveTripState() {
+    if (!currentTripId) return;
+    try {
+        await fetch(`/api/trip/${currentTripId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(collectTripState())
+        });
+    } catch (error) {
+        console.error('could not save shared trip state:', error);
+    }
+}
+
+async function shareItinerary() {
+    try {
+        const response = await fetch('/api/trip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(collectTripState())
+        });
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'save failed');
+        }
+
+        const data = await response.json();
+        currentTripId = data.id;
+
+        const url = new URL(window.location.href);
+        url.search = `?trip=${currentTripId}`;
+        const shareUrl = url.toString();
+        window.history.replaceState({}, '', shareUrl);
+
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            showAlert('share link copied to clipboard!', 'success');
+        } catch (clipboardError) {
+            prompt('copy this link to share:', shareUrl);
+        }
+    } catch (error) {
+        showAlert(`could not create a share link: ${error.message}`, 'error');
+    }
+}
+
+async function loadSharedTrip(id) {
+    try {
+        const response = await fetch(`/api/trip/${id}`);
+        if (!response.ok) {
+            showAlert('that shared trip link is invalid or expired.', 'error');
+            return;
+        }
+
+        const state = await response.json();
+        currentTripId = id;
+
+        places = state.places || [];
+        friends = state.friends || [];
+        itinerary = state.itinerary || [];
+        skeleton = state.skeleton || [];
+        dayStartTimes = state.dayStartTimes || {};
+        startingPointCoords = state.startingPointCoords || null;
+
+        if (state.startingPoint) document.getElementById('startingPoint').value = state.startingPoint;
+        if (state.startTime) document.getElementById('startTime').value = state.startTime;
+        if (state.tripDays) document.getElementById('tripDays').value = state.tripDays;
+        if (state.travelMode) document.getElementById('travelMode').value = state.travelMode;
+
+        updatePlacesList();
+        updateFriendsList();
+        updateFriendMeetOptions();
+        renderSkeleton();
+        renderDayStartTimeInputs();
+        displayItinerary(itinerary);
+        showAlert('loaded shared trip - your edits save back to this link.', 'success');
+    } catch (error) {
+        showAlert('could not load that shared trip.', 'error');
     }
 }
 
@@ -987,6 +1261,8 @@ window.addEventListener('DOMContentLoaded', () => {
     updatePlacesList();
     updateFriendsList();
     updateFriendMeetOptions();
+    renderSkeleton();
+    renderDayStartTimeInputs();
 
     // Tab button listeners
     document.querySelectorAll('.tab-button').forEach(btn => {
@@ -1019,4 +1295,10 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     checkBackendStatus();
+
+    const params = new URLSearchParams(window.location.search);
+    const tripId = params.get('trip');
+    if (tripId) {
+        loadSharedTrip(tripId);
+    }
 });
