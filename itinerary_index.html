@@ -24,8 +24,8 @@
         <div class="tabs-container">
             <div class="tabs">
                 <button class="tab-button active" data-tab="places">⌖ places</button>
-                <button class="tab-button" data-tab="itinerary">▤ itinerary</button>
                 <button class="tab-button" data-tab="people">● people</button>
+                <button class="tab-button" data-tab="itinerary">▤ itinerary</button>
             </div>
 
             <!-- TAB 1: PLACES -->
@@ -75,7 +75,36 @@
                 </div>
             </div>
 
-            <!-- TAB 2: ITINERARY -->
+            <!-- TAB 2: PEOPLE -->
+            <div class="tab-content" id="people-tab">
+                <div class="tab-inner">
+                    <section class="form-section">
+                        <h2>add friends</h2>
+                        <p class="help-text">note: places come first - add friends whenever, including after the itinerary's already built. once their arrival day/time has passed, they'll automatically show as attending every visit from that point on.</p>
+                        <div class="input-group">
+                            <label for="friendName">friend name</label>
+                            <input type="text" id="friendName" placeholder="e.g. Kai">
+
+                            <label for="friendDay">arrival day</label>
+                            <input type="number" id="friendDay" min="1" value="1">
+
+                            <label for="friendArrivalTime">arrival time</label>
+                            <input type="time" id="friendArrivalTime" value="09:00">
+
+                            <button onclick="addFriend()" class="btn-primary">add friend</button>
+                        </div>
+                    </section>
+
+                    <section class="form-section">
+                        <h2>friends in trip</h2>
+                        <div id="friendsList" class="friends-row" style="min-height: 140px;">
+                            <p class="empty-state">no friends added yet</p>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- TAB 3: ITINERARY -->
             <div class="tab-content" id="itinerary-tab">
                 <div class="tab-inner">
                     <section class="form-section">
@@ -150,37 +179,6 @@
                              ondragleave="handleItineraryDragLeave(event)"
                              ondrop="handleItineraryDrop(event)">
                             <p class="empty-state">your cute goat route will show up here. set your trip settings above and generate, or drag a place in.</p>
-                        </div>
-                    </section>
-                </div>
-            </div>
-
-            <!-- TAB 3: PEOPLE -->
-            <div class="tab-content" id="people-tab">
-                <div class="tab-inner">
-                    <section class="form-section">
-                        <h2>add friends</h2>
-                        <p class="help-text">note: places come first - add friends whenever, including after the itinerary's already built.</p>
-                        <div class="input-group">
-                            <label for="friendName">friend name</label>
-                            <input type="text" id="friendName" placeholder="e.g. Kai">
-
-                            <label for="friendArrivalTime">arrival time</label>
-                            <input type="time" id="friendArrivalTime" value="09:00">
-
-                            <label for="friendMeetLocation">meeting place</label>
-                            <select id="friendMeetLocation">
-                                <option value="">add a place first</option>
-                            </select>
-
-                            <button onclick="addFriend()" class="btn-primary">add friend</button>
-                        </div>
-                    </section>
-
-                    <section class="form-section">
-                        <h2>friends in trip</h2>
-                        <div id="friendsList" class="friends-row" style="min-height: 140px;">
-                            <p class="empty-state">no friends added yet</p>
                         </div>
                     </section>
                 </div>

@@ -248,7 +248,6 @@ async function addPlace() {
     lastPlaceCoords = null;
 
     updatePlacesList();
-    updateFriendMeetOptions();
     renderItineraryDestChips();
     showAlert(`added ${name}`, 'success');
 }
@@ -256,7 +255,6 @@ async function addPlace() {
 function removePlace(id) {
     places = places.filter(place => place.id !== id);
     updatePlacesList();
-    updateFriendMeetOptions();
 }
 
 function formatDuration(minutes) {
@@ -301,51 +299,36 @@ function updatePlacesList() {
     scheduleTripSave();
 }
 
-function updateFriendMeetOptions() {
-    const select = document.getElementById('friendMeetLocation');
-    if (!select) return;
-
-    if (places.length === 0) {
-        select.innerHTML = '<option value="">add a place first</option>';
-        select.disabled = true;
-        return;
-    }
-
-    select.disabled = false;
-    select.innerHTML = `
-        <option value="">choose place</option>
-        ${places.map(place => `<option value="${place.name}">${place.name}</option>`).join('')}
-    `;
-}
-
 function addFriend() {
     const name = document.getElementById('friendName').value.trim();
+    const day = parseInt(document.getElementById('friendDay').value, 10) || 1;
     const arrivalTime = document.getElementById('friendArrivalTime').value;
-    const meetLocation = document.getElementById('friendMeetLocation').value;
 
-    if (!name || !arrivalTime || !meetLocation) {
-        showAlert('please fill in the friend name, arrival time, and meeting place.', 'error');
+    if (!name || !arrivalTime) {
+        showAlert('please fill in the friend name and arrival time.', 'error');
         return;
     }
 
     friends.push({
         id: Date.now(),
         name,
-        arrivalTime,
-        meetLocation
+        day,
+        arrivalTime
     });
 
     document.getElementById('friendName').value = '';
+    document.getElementById('friendDay').value = '1';
     document.getElementById('friendArrivalTime').value = '09:00';
-    document.getElementById('friendMeetLocation').value = '';
 
     updateFriendsList();
+    refreshItineraryAttendance();
     showAlert(`saved friend ${name}`, 'success');
 }
 
 function removeFriend(id) {
     friends = friends.filter(friend => friend.id !== id);
     updateFriendsList();
+    refreshItineraryAttendance();
 }
 
 function updateFriendsList() {
@@ -362,11 +345,20 @@ function updateFriendsList() {
             <button class="friend-remove" onclick="removeFriend(${friend.id})" aria-label="Remove ${friend.name}">✕</button>
             <div class="friend-avatar">${friend.name.charAt(0).toUpperCase()}</div>
             <div class="friend-name">${friend.name}</div>
+            <div class="friend-meta">day ${friend.day}</div>
             <div class="friend-meta">${friend.arrivalTime}</div>
-            <div class="friend-meta">${friend.meetLocation}</div>
         </div>
     `).join('');
     scheduleTripSave();
+}
+
+// Re-runs attendance (and only attendance - not times/positions) against the
+// current itinerary whenever the friends list changes, so edits show up
+// immediately without needing to regenerate.
+function refreshItineraryAttendance() {
+    if (itinerary.length === 0) return;
+    normalizeItinerary();
+    displayItinerary(itinerary);
 }
 
 async function resolveStartingPointCoords(startingPoint) {
@@ -493,6 +485,23 @@ function getDayStartTime(day) {
     return dayStartTimes[day] || document.getElementById('startTime').value || '09:00';
 }
 
+// A friend is "here" for a visit once their arrival (day, time) has passed -
+// no location matching. Once arrived, they stay present for every later
+// visit, same day or any day after, until explicitly overridden per-visit.
+function isAttending(friend, day, time) {
+    const friendDay = parseInt(friend.day, 10) || 1;
+    if (friendDay < day) return true;
+    if (friendDay > day) return false;
+    return toMinutes(friend.arrivalTime) <= toMinutes(time);
+}
+
+function getEffectiveAttendees(item) {
+    if (item.attendeesOverride != null) return item.attendeesOverride;
+    return friends
+        .filter(friend => isAttending(friend, item.day, item.startTime))
+        .map(friend => friend.name);
+}
+
 function renderDayStartTimeInputs() {
     const days = parseInt(document.getElementById('tripDays').value, 10) || 1;
     const container = document.getElementById('dayStartTimesContainer');
@@ -544,6 +553,7 @@ async function generateItinerary() {
     try {
         currentDayView = 1;
         itinerary = await buildMultiDayItinerary(startingPoint, startCoords, dayGroups, travelMode);
+        normalizeItinerary();
         displayItinerary(itinerary);
         switchTab('itinerary');
         showAlert('itinerary ready! edit as needed.', 'success');
@@ -609,11 +619,11 @@ async function optimizeRoute(start, startCoords, places, friends, startTime, tra
     } catch (error) {
         console.error('Optimization error:', error);
         // Fallback: simple ordered itinerary (no live distance data available)
-        return createSimpleItinerary(start, startCoords, places, friends, startTime, tripDays);
+        return createSimpleItinerary(start, startCoords, places, startTime, tripDays);
     }
 }
 
-function createSimpleItinerary(start, startCoords, places, friends, startTime, tripDays = 1) {
+function createSimpleItinerary(start, startCoords, places, startTime, tripDays = 1) {
     const [startHour, startMin] = startTime.split(':').map(Number);
     let currentTime = startHour * 60 + startMin;
     const itinerary = [];
@@ -636,7 +646,6 @@ function createSimpleItinerary(start, startCoords, places, friends, startTime, t
 
         for (let i = 0; i < places.length; i++) {
             const place = places[i];
-            const placeFriends = friends.filter(f => f.meetLocation === place.name);
             const duration = place.duration || 0;
 
             // Travel segment
@@ -670,7 +679,7 @@ function createSimpleItinerary(start, startCoords, places, friends, startTime, t
                 duration: duration,
                 startTime: arrival,
                 endTime: depart,
-                friends: placeFriends.map(f => f.name).join(', ') || 'Solo',
+                friends: 'solo',
                 day: dayIdx + 1,
                 canEdit: true,
                 canDelete: true
@@ -873,6 +882,7 @@ function normalizeItinerary() {
             item.startTime = formatTime(current);
             current += item.duration;
             item.endTime = formatTime(current);
+            item.friends = getEffectiveAttendees(item).join(', ') || 'solo';
             lastLocation = item.place;
             lastCoords = item.coords || null;
         }
@@ -905,16 +915,29 @@ function editItineraryItem(index) {
     const item = itinerary[index];
     if (!item || item.type !== 'visit') return;
 
-    const input = prompt(`edit visit duration for ${item.place} (e.g. "1h 30m", "45m", or "0" for pass-through):`, formatDuration(item.duration));
-    if (input == null) return;
+    const durationInput = prompt(`edit visit duration for ${item.place} (e.g. "1h 30m", "45m", or "0" for pass-through):`, formatDuration(item.duration));
+    if (durationInput == null) return;
 
-    const parsed = parseDurationInput(input, null);
+    const parsed = parseDurationInput(durationInput, null);
     if (parsed == null || parsed < 0) {
         showAlert('could not read that duration. try formats like "1h 30m", "45m", or "0".', 'error');
         return;
     }
-
     item.duration = parsed;
+
+    if (friends.length > 0) {
+        const currentNames = getEffectiveAttendees(item).join(', ');
+        const namesInput = prompt(
+            `who's here for ${item.place}? comma-separated names (auto-filled by arrival day/time - edit to override just this visit, clear to mark solo)`,
+            currentNames
+        );
+        if (namesInput != null) {
+            item.attendeesOverride = namesInput.trim() === ''
+                ? []
+                : namesInput.split(',').map(name => name.trim()).filter(Boolean);
+        }
+    }
+
     normalizeItinerary();
     displayItinerary(itinerary);
     showAlert(`updated ${item.place}`, 'success');
@@ -1062,7 +1085,6 @@ async function insertDestinationAtBoundary(placeId, boundary) {
     if (!place) return;
 
     const defaultTravelMode = document.getElementById('travelMode').value || 'driving';
-    const placeFriends = friends.filter(f => f.meetLocation === place.name).map(f => f.name).join(', ') || 'Solo';
 
     const travelItem = { type: 'travel', from: '', to: place.name, duration: 20, distance: '---', accurate: false, travelMode: defaultTravelMode };
     const visitItem = {
@@ -1073,7 +1095,7 @@ async function insertDestinationAtBoundary(placeId, boundary) {
         notes: place.notes || '',
         tags: place.tags || [],
         duration: place.duration || 0,
-        friends: placeFriends,
+        friends: 'solo',
         canEdit: true,
         canDelete: true
     };
@@ -1203,7 +1225,6 @@ async function loadSharedTrip(id) {
 
         updatePlacesList();
         updateFriendsList();
-        updateFriendMeetOptions();
         renderSkeleton();
         renderDayStartTimeInputs();
         displayItinerary(itinerary);
@@ -1260,7 +1281,6 @@ function switchTab(tabName) {
 window.addEventListener('DOMContentLoaded', () => {
     updatePlacesList();
     updateFriendsList();
-    updateFriendMeetOptions();
     renderSkeleton();
     renderDayStartTimeInputs();
 

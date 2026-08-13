@@ -6,11 +6,8 @@ Handles route optimization, distance/time calculations, and itinerary generation
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import requests
-import math
 import json
 import uuid
-from itertools import permutations
-from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlencode
 import os
 
@@ -203,124 +200,24 @@ class ItineraryPlanner:
             print(f"Place search error: {e}")
             return []
     
-    def optimize_route_brute_force(self, start_coords, places, distance_matrix, travel_mode='driving'):
-        """
-        Optimize route using nearest neighbor algorithm
-        For small datasets, can use brute force to find optimal route
-        """
-        n = len(places)
-        
-        if n <= 8:
-            # Use brute force for small datasets
-            min_distance = float('inf')
-            best_order = list(range(n))
-            
-            for perm in permutations(range(n)):
-                total_distance = 0
-                # Add distance from start to first place
-                total_distance += distance_matrix[0][perm[0] + 1]['distance']
-                
-                # Add distances between consecutive places
-                for i in range(len(perm) - 1):
-                    total_distance += distance_matrix[perm[i] + 1][perm[i + 1] + 1]['distance']
-                
-                if total_distance < min_distance:
-                    min_distance = total_distance
-                    best_order = list(perm)
-            
-            return best_order
-        else:
-            # Use nearest neighbor for larger datasets
-            return self.nearest_neighbor_algorithm(distance_matrix, n)
-    
-    def nearest_neighbor_algorithm(self, distance_matrix, n):
-        """Greedy nearest neighbor algorithm for TSP"""
-        unvisited = set(range(n))
-        current = 0
-        order = []
-        
-        while unvisited:
-            unvisited.discard(current)
-            nearest = min(unvisited, key=lambda x: distance_matrix[current + 1][x + 1]['distance']) if unvisited else None
-            order.append(current)
-            if nearest is not None:
-                current = nearest
-        
-        return order
-    
-    def build_itinerary(self, start_coords, start_address, places, friends, start_time, optimized_order, distance_matrix):
-        """Build detailed itinerary with timings"""
-        itinerary = []
-        current_time = datetime.strptime(start_time, "%H:%M")
-        
-        # Add initial location
-        current_location = start_address
-        
-        for idx, place_idx in enumerate(optimized_order):
-            place = places[place_idx]
-            
-            # Add travel segment
-            travel_time_seconds = distance_matrix[idx][place_idx + 1]['duration']
-            travel_time_minutes = travel_time_seconds // 60
-            
-            travel_end = current_time + timedelta(minutes=travel_time_minutes)
-            
-            itinerary.append({
-                'type': 'travel',
-                'from': current_location,
-                'to': place['name'],
-                'distance': distance_matrix[idx][place_idx + 1]['distance_text'],
-                'duration': f"{travel_time_minutes} mins",
-                'start_time': current_time.strftime("%H:%M"),
-                'end_time': travel_end.strftime("%H:%M")
-            })
-            
-            current_time = travel_end
-            
-            # Check for friend meetups at this location
-            for friend in friends:
-                if friend['meetLocation'] == place['name']:
-                    friend_arrival = datetime.strptime(friend['arrivalTime'], "%H:%M")
-                    
-                    if current_time <= friend_arrival:
-                        itinerary.append({
-                            'type': 'friend_wait',
-                            'friend': friend['name'],
-                            'pax': friend['pax'],
-                            'location': place['name'],
-                            'arrival_time': friend['arrivalTime'],
-                            'wait_duration': str((friend_arrival - current_time).total_seconds() // 60)
-                        })
-                        current_time = friend_arrival
-                    
-                    itinerary.append({
-                        'type': 'friend_meetup',
-                        'friend': friend['name'],
-                        'pax': friend['pax'],
-                        'location': place['name'],
-                        'time': friend['arrivalTime']
-                    })
-            
-            # Add visit segment
-            visit_duration = place.get('duration', 60)
-            visit_end = current_time + timedelta(minutes=visit_duration)
-            
-            itinerary.append({
-                'type': 'visit',
-                'place': place['name'],
-                'address': place.get('address', ''),
-                'duration': f"{visit_duration} mins",
-                'start_time': current_time.strftime("%H:%M"),
-                'end_time': visit_end.strftime("%H:%M")
-            })
-            
-            current_time = visit_end
-            current_location = place['name']
-        
-        return itinerary
-
 
 planner = ItineraryPlanner(GOOGLE_MAPS_API_KEY)
+
+
+def _to_minutes(time_str):
+    hours, minutes = map(int, (time_str or '00:00').split(':'))
+    return hours * 60 + minutes
+
+
+def compute_attendees(friends, day, time_str):
+    """Friends whose (day, arrival time) has passed by this point in the trip - no location matching."""
+    current_minutes = _to_minutes(time_str)
+    attendees = []
+    for friend in friends:
+        friend_day = friend.get('day') or 1
+        if friend_day < day or (friend_day == day and _to_minutes(friend.get('arrivalTime')) <= current_minutes):
+            attendees.append(friend['name'])
+    return attendees
 
 
 @app.route('/api/geocode', methods=['POST'])
@@ -423,7 +320,7 @@ def optimize_itinerary():
                 visit_start_time = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
                 visit_end_time = f"{(current_minutes + duration) // 60:02d}:{(current_minutes + duration) % 60:02d}"
 
-                place_friends = [f['name'] for f in friends if f.get('meetLocation') == place['name']]
+                place_friends = compute_attendees(friends, day_idx + 1, visit_start_time)
 
                 itinerary.append({
                     'type': 'visit',
