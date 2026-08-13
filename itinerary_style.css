@@ -26,15 +26,6 @@ body {
     color: var(--text-dark);
 }
 
-body::before {
-    content: '🐐';
-    position: fixed;
-    top: 16px;
-    right: 16px;
-    font-size: 4rem;
-    opacity: 0.18;
-}
-
 .container {
     max-width: 1120px;
     margin: 0 auto;
@@ -332,7 +323,9 @@ button:hover {
     place-items: center;
     border-radius: 50%;
     background: var(--accent-soft);
-    font-size: 1.4rem;
+    color: var(--accent);
+    font-size: 1.15rem;
+    font-weight: 700;
     border: 1px solid rgba(79, 121, 66, 0.18);
 }
 

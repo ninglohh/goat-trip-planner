@@ -15,7 +15,7 @@
             <div class="hero">
                 <div>
                     <h1>goat (goin on a trip)</h1>
-                    <p>testing on performative males</p>
+                    <p>work in progress!</p>
                 </div>
             </div>
             <div id="apiStatus" class="status-chip">checking backend connection...</div>
@@ -23,9 +23,9 @@
 
         <div class="tabs-container">
             <div class="tabs">
-                <button class="tab-button active" data-tab="places">🗺️ places</button>
-                <button class="tab-button" data-tab="itinerary">📅 itinerary</button>
-                <button class="tab-button" data-tab="people">👥 people</button>
+                <button class="tab-button active" data-tab="places">⌖ places</button>
+                <button class="tab-button" data-tab="itinerary">▤ itinerary</button>
+                <button class="tab-button" data-tab="people">● people</button>
             </div>
 
             <!-- TAB 1: PLACES -->
@@ -55,10 +55,10 @@
 
                             <label>tags (optional)</label>
                             <div class="tag-options" id="placeTagOptions">
-                                <button type="button" class="tag-toggle" data-tag="Home Court" onclick="toggleTagOption(this)">🏠 home court</button>
-                                <button type="button" class="tag-toggle" data-tag="Food" onclick="toggleTagOption(this)">🍜 food</button>
-                                <button type="button" class="tag-toggle" data-tag="Activity" onclick="toggleTagOption(this)">🎯 activity</button>
-                                <button type="button" class="tag-toggle" data-tag="Self Care" onclick="toggleTagOption(this)">🧖 self care</button>
+                                <button type="button" class="tag-toggle" data-tag="Home Court" onclick="toggleTagOption(this)">⌂ home court</button>
+                                <button type="button" class="tag-toggle" data-tag="Food" onclick="toggleTagOption(this)">◆ food</button>
+                                <button type="button" class="tag-toggle" data-tag="Activity" onclick="toggleTagOption(this)">▲ activity</button>
+                                <button type="button" class="tag-toggle" data-tag="Self Care" onclick="toggleTagOption(this)">✦ self care</button>
                             </div>
                             <input type="text" id="placeCustomTag" placeholder="or type your own tag(s), comma separated">
 
@@ -108,13 +108,13 @@
 
                     <section class="form-section">
                         <h2>plan shape (optional)</h2>
-                        <p class="help-text">💡 build the shape of your day by category - we'll fill each slot with the nearest matching place to minimize commute. leave empty to just use your places in the order you added them.</p>
+                        <p class="help-text">note: build the shape of your day by category - we'll fill each slot with the nearest matching place to minimize commute. leave empty to just use your places in the order you added them.</p>
                         <div class="tag-options" id="skeletonTagOptions">
-                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Home Court')">🏠 home court</button>
-                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Food')">🍜 food</button>
-                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Activity')">🎯 activity</button>
-                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Self Care')">🧖 self care</button>
-                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Any')">✨ any</button>
+                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Home Court')">⌂ home court</button>
+                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Food')">◆ food</button>
+                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Activity')">▲ activity</button>
+                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Self Care')">✦ self care</button>
+                            <button type="button" class="tag-toggle" onclick="addSkeletonSlot('Any')">✳ any</button>
                         </div>
                         <div id="skeletonSequence" class="skeleton-sequence">
                             <p class="empty-state">no shape set - tap a category above to start building one</p>
@@ -124,7 +124,7 @@
 
                     <section class="form-section">
                         <h2>drag in a place</h2>
-                        <p class="help-text">💡 drag a chip below and drop it into your itinerary to insert a visit there.</p>
+                        <p class="help-text">note: drag a chip below and drop it into your itinerary to insert a visit there.</p>
                         <div id="itineraryDestChips" class="dest-chips">
                             <p class="empty-state">add places in the places tab, then drag them in here.</p>
                         </div>
@@ -133,9 +133,9 @@
                     <section class="form-section">
                         <div class="itinerary-header-row">
                             <h2>your itinerary</h2>
-                            <button type="button" class="btn-secondary" onclick="shareItinerary()">🔗 share</button>
+                            <button type="button" class="btn-secondary" onclick="shareItinerary()">↗ share</button>
                         </div>
-                        <p class="help-text">💡 click ✏️ on any visit to edit its duration, or ✕ to remove it. change a leg's travel mode with its dropdown.</p>
+                        <p class="help-text">note: click ✎ on any visit to edit its duration, or ✕ to remove it. change a leg's travel mode with its dropdown.</p>
                         <div id="dayPager" class="day-pager hidden">
                             <button type="button" class="day-arrow" onclick="changeDayView(-1)" aria-label="Previous day">&#8592;</button>
                             <span id="dayPagerLabel">day 1 of 1</span>
@@ -160,7 +160,7 @@
                 <div class="tab-inner">
                     <section class="form-section">
                         <h2>add friends</h2>
-                        <p class="help-text">💡 places come first - add friends whenever, including after the itinerary's already built.</p>
+                        <p class="help-text">note: places come first - add friends whenever, including after the itinerary's already built.</p>
                         <div class="input-group">
                             <label for="friendName">friend name</label>
                             <input type="text" id="friendName" placeholder="e.g. Kai">

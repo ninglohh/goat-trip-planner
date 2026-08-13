@@ -46,7 +46,7 @@ async function checkBackendStatus() {
         backendAvailable = true;
 
         if (data.apiKeyConfigured) {
-            updateApiStatus(true, 'backend connected ✅ google maps api key detected.');
+            updateApiStatus(true, 'backend connected ✓ google maps api key detected.');
         } else {
             updateApiStatus(true, 'backend connected, but no google maps api key is set (GOOGLE_MAPS_API_KEY). place search/geocoding will fail.', true);
         }
@@ -61,7 +61,7 @@ function updateApiStatus(loaded, message, warn = false) {
     if (!status) return;
 
     if (loaded) {
-        status.textContent = message || 'backend connected ✅';
+        status.textContent = message || 'backend connected ✓';
         status.classList.toggle('status-warn', warn);
         status.classList.toggle('status-ok', !warn);
         status.classList.remove('status-error');
@@ -290,7 +290,7 @@ function updatePlacesList() {
                 <strong>${place.name}</strong>
                 <small>${place.address}</small>
                 <small>${place.duration > 0 ? `visit ${formatDuration(place.duration)}` : 'pass-through (no duration set)'}</small>
-                ${place.notes ? `<small class="place-notes">📝 ${place.notes}</small>` : ''}
+                ${place.notes ? `<small class="place-notes">» ${place.notes}</small>` : ''}
                 ${renderTagBadges(place.tags)}
             </div>
             <button class="btn-remove" onclick="removePlace(${place.id})">remove</button>
@@ -360,7 +360,7 @@ function updateFriendsList() {
     list.innerHTML = friends.map(friend => `
         <div class="friend-chip">
             <button class="friend-remove" onclick="removeFriend(${friend.id})" aria-label="Remove ${friend.name}">✕</button>
-            <div class="friend-avatar">🧑</div>
+            <div class="friend-avatar">${friend.name.charAt(0).toUpperCase()}</div>
             <div class="friend-name">${friend.name}</div>
             <div class="friend-meta">${friend.arrivalTime}</div>
             <div class="friend-meta">${friend.meetLocation}</div>
@@ -744,7 +744,7 @@ function displayItinerary(itineraryItems) {
                 <tr class="itinerary-row travel-row" data-index="${index}">
                     <td class="col-time">${item.startTime} → ${item.endTime}</td>
                     <td class="col-place">
-                        🚗
+                        ▸
                         <select class="mode-select" onchange="changeLegMode(${index}, this.value)">
                             ${TRAVEL_MODES.map(mode => `<option value="${mode}" ${item.travelMode === mode ? 'selected' : ''}>${modeLabel(mode)}</option>`).join('')}
                         </select>
@@ -763,11 +763,11 @@ function displayItinerary(itineraryItems) {
             return `
                 <tr class="itinerary-row visit-row" data-index="${index}">
                     <td class="col-time">${timeCell}</td>
-                    <td class="col-place">📍 ${item.place}${renderTagBadges(item.tags)}</td>
-                    <td class="col-address">${item.address || '—'}${item.notes ? `<br><small class="itinerary-note">📝 ${item.notes}</small>` : ''}</td>
+                    <td class="col-place">⌖ ${item.place}${renderTagBadges(item.tags)}</td>
+                    <td class="col-address">${item.address || '—'}${item.notes ? `<br><small class="itinerary-note">» ${item.notes}</small>` : ''}</td>
                     <td class="col-people">${item.friends || 'solo'}</td>
                     <td class="col-actions">
-                        <button class="btn-small" onclick="editItineraryItem(${index})">✏️</button>
+                        <button class="btn-small" onclick="editItineraryItem(${index})">✎</button>
                         <button class="btn-small" onclick="deleteItineraryItem(${index})">✕</button>
                     </td>
                 </tr>
@@ -953,7 +953,7 @@ function renderItineraryDestChips() {
 
     box.innerHTML = places.map(place => `
         <div class="dest-chip" draggable="true" data-place-id="${place.id}" ondragstart="handleChipDragStart(event, ${place.id})">
-            📍 ${place.name}
+            ⌖ ${place.name}
         </div>
     `).join('');
 }
